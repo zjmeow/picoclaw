@@ -39,7 +39,7 @@ Telegram Channel 通过 Telegram 机器人 API 使用长轮询实现基于机器
 
 ## 内置命令
 
-Telegram 会在启动时自动注册 PicoClaw 的顶级 Bot 命令，包括 `/start`、`/help`、`/show`、`/list` 和 `/use`。
+Telegram 会在启动时自动注册 PicoClaw 的顶级 Bot 命令，包括 `/start`、`/help`、`/show`、`/list`、`/use` 和 `/skill`。
 
 与技能相关的命令：
 
@@ -47,6 +47,10 @@ Telegram 会在启动时自动注册 PicoClaw 的顶级 Bot 命令，包括 `/st
 - `/use <skill> <message>`：只在本次请求中强制使用指定技能。
 - `/use <skill>`：为同一聊天中的下一条消息预先启用该技能。
 - `/use clear`：清除待应用的技能覆盖。
+- `/skill add <skill>`：将技能固定到当前 session，直到手动移除。
+- `/skill remove <skill>`：移除一个 session 级常驻技能。
+- `/skill clear`：清空当前 session 的所有常驻技能。
+- `/skill show`：查看当前 session 的常驻技能列表。
 
 示例：
 

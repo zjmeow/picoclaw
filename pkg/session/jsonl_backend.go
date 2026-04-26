@@ -27,6 +27,11 @@ type aliasPromotingStore interface {
 	PromoteAliasHistory(ctx context.Context, sessionKey string, scope json.RawMessage, aliases []string) (bool, error)
 }
 
+type skillAwareStore interface {
+	GetSessionSkills(ctx context.Context, sessionKey string) ([]string, error)
+	SetSessionSkills(ctx context.Context, sessionKey string, skills []string) error
+}
+
 // MetadataAwareSessionStore exposes structured session metadata operations.
 type MetadataAwareSessionStore interface {
 	EnsureSessionMetadata(sessionKey string, scope *SessionScope, aliases []string)
@@ -189,4 +194,29 @@ func (b *JSONLBackend) Close() error {
 // ListSessions returns all known session keys.
 func (b *JSONLBackend) ListSessions() []string {
 	return b.store.ListSessions()
+}
+
+func (b *JSONLBackend) GetSessionSkills(sessionKey string) []string {
+	skillStore, ok := b.store.(skillAwareStore)
+	if !ok {
+		return nil
+	}
+	sessionKey = b.resolveSessionKey(sessionKey)
+	skills, err := skillStore.GetSessionSkills(context.Background(), sessionKey)
+	if err != nil {
+		log.Printf("session: get session skills: %v", err)
+		return nil
+	}
+	return skills
+}
+
+func (b *JSONLBackend) SetSessionSkills(sessionKey string, skills []string) {
+	skillStore, ok := b.store.(skillAwareStore)
+	if !ok {
+		return
+	}
+	sessionKey = b.resolveSessionKey(sessionKey)
+	if err := skillStore.SetSessionSkills(context.Background(), sessionKey, skills); err != nil {
+		log.Printf("session: set session skills: %v", err)
+	}
 }

@@ -83,3 +83,20 @@ func TestSave_RejectsPathTraversal(t *testing.T) {
 		t.Errorf("expected foo_bar.json in storage (sanitized from foo/bar)")
 	}
 }
+
+func TestSessionSkills_RoundTrip(t *testing.T) {
+	tmpDir := t.TempDir()
+	sm := NewSessionManager(tmpDir)
+
+	key := "telegram:123456"
+	sm.SetSessionSkills(key, []string{"shell", "git", "shell"})
+	if err := sm.Save(key); err != nil {
+		t.Fatalf("Save(%q) failed: %v", key, err)
+	}
+
+	sm2 := NewSessionManager(tmpDir)
+	got := sm2.GetSessionSkills(key)
+	if len(got) != 2 || got[0] != "shell" || got[1] != "git" {
+		t.Fatalf("GetSessionSkills() = %v, want [shell git]", got)
+	}
+}

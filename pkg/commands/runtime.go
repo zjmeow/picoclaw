@@ -46,6 +46,9 @@ type Runtime struct {
 	ListAgentIDs       func() []string
 	ListDefinitions    func() []Definition
 	ListSkillNames     func() []string
+	ResolveSkillName   func(name string) (string, bool)
+	ListSessionSkills  func() []string
+	SetSessionSkills   func(skills []string) error
 	ListMCPServers     func(ctx context.Context) []MCPServerInfo
 	ListMCPTools       func(ctx context.Context, serverName string) ([]MCPToolInfo, error)
 	GetEnabledChannels func() []string

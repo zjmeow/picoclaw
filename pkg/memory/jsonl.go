@@ -47,6 +47,7 @@ type SessionMeta struct {
 	UpdatedAt time.Time       `json:"updated_at"`
 	Scope     json.RawMessage `json:"scope,omitempty"`
 	Aliases   []string        `json:"aliases,omitempty"`
+	Skills    []string        `json:"skills,omitempty"`
 }
 
 // JSONLStore implements Store using append-only JSONL files.
@@ -168,6 +169,30 @@ func normalizeAliases(canonicalKey string, aliases []string) []string {
 	return normalized
 }
 
+func normalizeSessionSkills(skills []string) []string {
+	if len(skills) == 0 {
+		return nil
+	}
+	normalized := make([]string, 0, len(skills))
+	seen := make(map[string]struct{}, len(skills))
+	for _, skill := range skills {
+		skill = strings.TrimSpace(skill)
+		if skill == "" {
+			continue
+		}
+		key := strings.ToLower(skill)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		normalized = append(normalized, skill)
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
+}
+
 func (s *JSONLStore) sessionExists(key string) bool {
 	if key == "" {
 		return false
@@ -195,7 +220,40 @@ func (s *JSONLStore) GetSessionMeta(_ context.Context, sessionKey string) (Sessi
 	if len(meta.Aliases) > 0 {
 		meta.Aliases = append([]string(nil), meta.Aliases...)
 	}
+	if len(meta.Skills) > 0 {
+		meta.Skills = append([]string(nil), meta.Skills...)
+	}
 	return meta, nil
+}
+
+func (s *JSONLStore) GetSessionSkills(_ context.Context, sessionKey string) ([]string, error) {
+	l := s.sessionLock(sessionKey)
+	l.Lock()
+	defer l.Unlock()
+
+	meta, err := s.readMeta(sessionKey)
+	if err != nil {
+		return nil, err
+	}
+	return append([]string(nil), meta.Skills...), nil
+}
+
+func (s *JSONLStore) SetSessionSkills(_ context.Context, sessionKey string, skills []string) error {
+	l := s.sessionLock(sessionKey)
+	l.Lock()
+	defer l.Unlock()
+
+	meta, err := s.readMeta(sessionKey)
+	if err != nil {
+		return err
+	}
+	meta.Skills = normalizeSessionSkills(skills)
+	now := time.Now()
+	if meta.CreatedAt.IsZero() {
+		meta.CreatedAt = now
+	}
+	meta.UpdatedAt = now
+	return s.writeMeta(sessionKey, meta)
 }
 
 // UpsertSessionMeta stores structured session metadata while preserving

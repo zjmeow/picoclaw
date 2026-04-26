@@ -36,10 +36,9 @@ func computeContextUsage(agent *AgentInstance, sessionKey string) *bus.ContextUs
 	systemTokens := 0
 	if agent.ContextBuilder != nil {
 		summary := agent.Sessions.GetSummary(sessionKey)
-		// Pass nil for active skills: skills are only injected when the user
-		// explicitly activates them via /use, which is rare. Using nil matches
-		// the common case and avoids over-counting all installed skills.
-		systemTokens = agent.ContextBuilder.EstimateSystemTokens(summary, nil)
+		activeSkills := append([]string(nil), agent.SkillsFilter...)
+		activeSkills = append(activeSkills, sessionSkillNames(agent.Sessions, sessionKey)...)
+		systemTokens = agent.ContextBuilder.EstimateSystemTokens(summary, activeSkills)
 	}
 
 	// Tool definition tokens

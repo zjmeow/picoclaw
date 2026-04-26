@@ -827,6 +827,90 @@ func TestApplyExplicitSkillCommand_InlineMessageMutatesOptions(t *testing.T) {
 	}
 }
 
+func TestProcessMessage_SessionSkillCommandPersistsAcrossTurns(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "agent-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	cfg := &config.Config{
+		Agents: config.AgentsConfig{
+			Defaults: config.AgentDefaults{
+				Workspace:         tmpDir,
+				ModelName:         "test-model",
+				MaxTokens:         4096,
+				MaxToolIterations: 10,
+			},
+		},
+	}
+	msgBus := bus.NewMessageBus()
+	provider := &recordingProvider{}
+	al := NewAgentLoop(cfg, msgBus, provider)
+
+	if err := os.MkdirAll(filepath.Join(cfg.Agents.Defaults.Workspace, "skills", "finance-news"), 0o755); err != nil {
+		t.Fatalf("MkdirAll(skill) error = %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(cfg.Agents.Defaults.Workspace, "skills", "finance-news", "SKILL.md"),
+		[]byte("# Finance News\n\nUse web tools for current finance updates.\n"),
+		0o644,
+	); err != nil {
+		t.Fatalf("WriteFile(SKILL.md) error = %v", err)
+	}
+
+	response, err := al.processMessage(context.Background(), testInboundMessage(bus.InboundMessage{
+		Channel:  "telegram",
+		SenderID: "telegram:123",
+		ChatID:   "chat-1",
+		Content:  "/skill add finance-news",
+	}))
+	if err != nil {
+		t.Fatalf("processMessage() add error = %v", err)
+	}
+	if !strings.Contains(response, `Skill "finance-news" is now active for this session`) {
+		t.Fatalf("add response = %q, want session activation confirmation", response)
+	}
+
+	response, err = al.processMessage(context.Background(), testInboundMessage(bus.InboundMessage{
+		Channel:  "telegram",
+		SenderID: "telegram:123",
+		ChatID:   "chat-1",
+		Content:  "first request",
+	}))
+	if err != nil {
+		t.Fatalf("processMessage() first turn error = %v", err)
+	}
+	if response != "Mock response" {
+		t.Fatalf("first response = %q, want %q", response, "Mock response")
+	}
+	if len(provider.lastMessages) == 0 {
+		t.Fatal("provider did not receive first turn messages")
+	}
+	if !strings.Contains(provider.lastMessages[0].Content, "### Skill: finance-news") {
+		t.Fatalf("first system prompt missing session skill:\n%s", provider.lastMessages[0].Content)
+	}
+
+	response, err = al.processMessage(context.Background(), testInboundMessage(bus.InboundMessage{
+		Channel:  "telegram",
+		SenderID: "telegram:123",
+		ChatID:   "chat-1",
+		Content:  "second request",
+	}))
+	if err != nil {
+		t.Fatalf("processMessage() second turn error = %v", err)
+	}
+	if response != "Mock response" {
+		t.Fatalf("second response = %q, want %q", response, "Mock response")
+	}
+	if len(provider.lastMessages) == 0 {
+		t.Fatal("provider did not receive second turn messages")
+	}
+	if !strings.Contains(provider.lastMessages[0].Content, "### Skill: finance-news") {
+		t.Fatalf("second system prompt missing session skill:\n%s", provider.lastMessages[0].Content)
+	}
+}
+
 func TestRecordLastChannel(t *testing.T) {
 	al, cfg, msgBus, provider, cleanup := newTestAgentLoop(t)
 	defer cleanup()

@@ -16,6 +16,7 @@ type Session struct {
 	Key      string              `json:"key"`
 	Messages []providers.Message `json:"messages"`
 	Summary  string              `json:"summary,omitempty"`
+	Skills   []string            `json:"skills,omitempty"`
 	Created  time.Time           `json:"created"`
 	Updated  time.Time           `json:"updated"`
 }
@@ -160,6 +161,54 @@ func (sm *SessionManager) ListSessions() []string {
 	return keys
 }
 
+func (sm *SessionManager) GetSessionSkills(key string) []string {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+
+	session, ok := sm.sessions[key]
+	if !ok || len(session.Skills) == 0 {
+		return nil
+	}
+
+	skills := make([]string, len(session.Skills))
+	copy(skills, session.Skills)
+	return skills
+}
+
+func (sm *SessionManager) SetSessionSkills(key string, skills []string) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	session, ok := sm.sessions[key]
+	if !ok {
+		session = &Session{
+			Key:      key,
+			Messages: []providers.Message{},
+			Created:  time.Now(),
+		}
+		sm.sessions[key] = session
+	}
+
+	seen := make(map[string]struct{}, len(skills))
+	session.Skills = session.Skills[:0]
+	for _, skill := range skills {
+		skill = strings.TrimSpace(skill)
+		if skill == "" {
+			continue
+		}
+		key := strings.ToLower(skill)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		session.Skills = append(session.Skills, skill)
+	}
+	if len(session.Skills) == 0 {
+		session.Skills = nil
+	}
+	session.Updated = time.Now()
+}
+
 // sanitizeFilename converts a session key into a cross-platform safe filename.
 // Replaces ':' with '_' (session key separator) and '/' and '\' with '_' so
 // composite IDs (e.g. Telegram forum "chatID/threadID") do not create
@@ -197,6 +246,7 @@ func (sm *SessionManager) Save(key string) error {
 	snapshot := Session{
 		Key:     stored.Key,
 		Summary: stored.Summary,
+		Skills:  append([]string(nil), stored.Skills...),
 		Created: stored.Created,
 		Updated: stored.Updated,
 	}

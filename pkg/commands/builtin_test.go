@@ -47,6 +47,9 @@ func TestBuiltinHelpHandler_ReturnsFormattedMessage(t *testing.T) {
 			t.Fatalf("/help reply missing /use usage, got %q", reply)
 		}
 	}
+	if !strings.Contains(reply, "/skill [add <skill>|remove <skill>|clear|show]") {
+		t.Fatalf("/help reply missing /skill usage, got %q", reply)
+	}
 }
 
 func TestBuiltinShowChannel_PreservesUserVisibleBehavior(t *testing.T) {
@@ -171,6 +174,69 @@ func TestBuiltinListSkills_UsesRuntimeSkillNames(t *testing.T) {
 	}
 	if !strings.Contains(reply, "shell") || !strings.Contains(reply, "git") {
 		t.Fatalf("/list skills reply=%q, want installed skill names", reply)
+	}
+	if !strings.Contains(reply, "/skill add <skill>") {
+		t.Fatalf("/list skills reply=%q, want session skill hint", reply)
+	}
+}
+
+func TestBuiltinSkillAdd_UsesSessionSkillRuntime(t *testing.T) {
+	rt := &Runtime{
+		ResolveSkillName: func(name string) (string, bool) {
+			if strings.EqualFold(name, "shell") {
+				return "shell", true
+			}
+			return "", false
+		},
+		ListSessionSkills: func() []string {
+			return nil
+		},
+		SetSessionSkills: func(skills []string) error {
+			if len(skills) != 1 || skills[0] != "shell" {
+				t.Fatalf("SetSessionSkills(%v), want [shell]", skills)
+			}
+			return nil
+		},
+	}
+	ex := NewExecutor(NewRegistry(BuiltinDefinitions()), rt)
+
+	var reply string
+	res := ex.Execute(context.Background(), Request{
+		Text: "/skill add shell",
+		Reply: func(text string) error {
+			reply = text
+			return nil
+		},
+	})
+	if res.Outcome != OutcomeHandled {
+		t.Fatalf("/skill add outcome=%v, want=%v", res.Outcome, OutcomeHandled)
+	}
+	if !strings.Contains(reply, `Skill "shell" is now active for this session`) {
+		t.Fatalf("/skill add reply=%q, want success text", reply)
+	}
+}
+
+func TestBuiltinSkillShow_FormatsActiveSkills(t *testing.T) {
+	rt := &Runtime{
+		ListSessionSkills: func() []string {
+			return []string{"shell", "git"}
+		},
+	}
+	ex := NewExecutor(NewRegistry(BuiltinDefinitions()), rt)
+
+	var reply string
+	res := ex.Execute(context.Background(), Request{
+		Text: "/skill show",
+		Reply: func(text string) error {
+			reply = text
+			return nil
+		},
+	})
+	if res.Outcome != OutcomeHandled {
+		t.Fatalf("/skill show outcome=%v, want=%v", res.Outcome, OutcomeHandled)
+	}
+	if !strings.Contains(reply, "Session Skills:\n- shell\n- git") {
+		t.Fatalf("/skill show reply=%q, want active skills list", reply)
 	}
 }
 

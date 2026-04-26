@@ -59,7 +59,7 @@ func listCommand() Definition {
 						return req.Reply("No installed skills")
 					}
 					return req.Reply(fmt.Sprintf(
-						"Installed Skills:\n- %s\n\nUse /use <skill> <message> to force one for a single request, or /use <skill> to apply it to your next message.",
+						"Installed Skills:\n- %s\n\nUse /use <skill> <message> to force one for a single request, /use <skill> for your next message, or /skill add <skill> to keep it active for this session.",
 						strings.Join(names, "\n- "),
 					))
 				},

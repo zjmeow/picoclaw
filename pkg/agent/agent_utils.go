@@ -443,8 +443,15 @@ func activeSkillNames(agent *AgentInstance, opts processOptions) []string {
 		return nil
 	}
 
-	combined := make([]string, 0, len(agent.SkillsFilter)+len(opts.ForcedSkills))
+	sessionKey := strings.TrimSpace(opts.Dispatch.SessionKey)
+	if sessionKey == "" {
+		sessionKey = strings.TrimSpace(opts.SessionKey)
+	}
+	sessionSkills := sessionSkillNames(agent.Sessions, sessionKey)
+
+	combined := make([]string, 0, len(agent.SkillsFilter)+len(sessionSkills)+len(opts.ForcedSkills))
 	combined = append(combined, agent.SkillsFilter...)
+	combined = append(combined, sessionSkills...)
 	combined = append(combined, opts.ForcedSkills...)
 	if len(combined) == 0 {
 		return nil

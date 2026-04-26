@@ -13,8 +13,10 @@ import (
 
 // Compile-time interface satisfaction checks.
 var (
-	_ session.SessionStore = (*session.SessionManager)(nil)
-	_ session.SessionStore = (*session.JSONLBackend)(nil)
+	_ session.SessionStore           = (*session.SessionManager)(nil)
+	_ session.SessionStore           = (*session.JSONLBackend)(nil)
+	_ session.SkillAwareSessionStore = (*session.SessionManager)(nil)
+	_ session.SkillAwareSessionStore = (*session.JSONLBackend)(nil)
 )
 
 func newBackend(t *testing.T) *session.JSONLBackend {
@@ -300,5 +302,24 @@ func TestJSONLBackend_EnsureSessionMetadata_DoesNotOverwriteNonEmptyCanonicalHis
 	history := b.GetHistory(canonicalKey)
 	if len(history) != 1 || history[0].Content != "current canonical history" {
 		t.Fatalf("canonical history overwritten: %+v", history)
+	}
+}
+
+func TestJSONLBackend_SessionSkillsPersist(t *testing.T) {
+	b := newBackend(t)
+
+	b.SetSessionSkills("s1", []string{"shell", "git", "shell"})
+	got := b.GetSessionSkills("s1")
+	if len(got) != 2 || got[0] != "shell" || got[1] != "git" {
+		t.Fatalf("GetSessionSkills() = %v, want [shell git]", got)
+	}
+
+	if err := b.Save("s1"); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	got = b.GetSessionSkills("s1")
+	if len(got) != 2 || got[0] != "shell" || got[1] != "git" {
+		t.Fatalf("GetSessionSkills() after save = %v, want [shell git]", got)
 	}
 }

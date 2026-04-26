@@ -39,7 +39,7 @@ The Telegram channel uses long polling via the Telegram Bot API for bot-based co
 
 ## Built-in Commands
 
-Telegram auto-registers PicoClaw's top-level bot commands at startup, including `/start`, `/help`, `/show`, `/list`, and `/use`.
+Telegram auto-registers PicoClaw's top-level bot commands at startup, including `/start`, `/help`, `/show`, `/list`, `/use`, and `/skill`.
 
 Skill-related commands:
 
@@ -49,6 +49,10 @@ Skill-related commands:
 - `/use <skill> <message>` forces a skill for a single request.
 - `/use <skill>` arms the skill for your next message in the same chat.
 - `/use clear` clears a pending skill override.
+- `/skill add <skill>` keeps a skill active for the current session until removed.
+- `/skill remove <skill>` removes one session-pinned skill.
+- `/skill clear` clears all session-pinned skills.
+- `/skill show` lists the session-pinned skills.
 
 Examples:
 

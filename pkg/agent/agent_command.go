@@ -137,6 +137,24 @@ func (al *AgentLoop) buildCommandsRuntime(
 		Config:          cfg,
 		ListAgentIDs:    registry.ListAgentIDs,
 		ListDefinitions: al.cmdRegistry.Definitions,
+		ResolveSkillName: func(name string) (string, bool) {
+			if agent == nil || agent.ContextBuilder == nil {
+				return "", false
+			}
+			return agent.ContextBuilder.ResolveSkillName(name)
+		},
+		ListSessionSkills: func() []string {
+			if opts == nil {
+				return nil
+			}
+			return al.getSessionSkills(agent, opts.Dispatch.SessionKey)
+		},
+		SetSessionSkills: func(skills []string) error {
+			if opts == nil {
+				return fmt.Errorf("session skill selection is unavailable")
+			}
+			return al.setSessionSkills(agent, opts.Dispatch.SessionKey, skills)
+		},
 		ListMCPServers: func(ctx context.Context) []commands.MCPServerInfo {
 			if cfg == nil {
 				return nil

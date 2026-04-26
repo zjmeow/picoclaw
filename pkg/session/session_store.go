@@ -32,3 +32,13 @@ type SessionStore interface {
 	// Close releases resources held by the store.
 	Close() error
 }
+
+// SkillAwareSessionStore exposes session-scoped persistent skill activation.
+// Implementations may persist this with other session metadata so skills remain
+// active across future turns for the same session.
+type SkillAwareSessionStore interface {
+	// GetSessionSkills returns the skills currently pinned to the session.
+	GetSessionSkills(sessionKey string) []string
+	// SetSessionSkills replaces the session-pinned skills.
+	SetSessionSkills(sessionKey string, skills []string)
+}
