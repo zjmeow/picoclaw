@@ -487,6 +487,16 @@ func pureConfigForTurn(ts *turnState) session.PureSessionConfig {
 	return sessionPureConfig(ts.agent.Sessions, ts.sessionKey)
 }
 
+var pureDefaultToolAllowlist = map[string]struct{}{
+	"read_file":   {},
+	"write_file":  {},
+	"append_file": {},
+	"edit_file":   {},
+	"list_dir":    {},
+	"message":     {},
+	"cron":        {},
+}
+
 func providerToolDefsForTurn(ts *turnState) []providers.ToolDefinition {
 	if ts == nil || ts.agent == nil || ts.agent.Tools == nil {
 		return nil
@@ -495,7 +505,18 @@ func providerToolDefsForTurn(ts *turnState) []providers.ToolDefinition {
 	if pure.Enabled && !pure.DefaultTools {
 		return nil
 	}
-	return ts.agent.Tools.ToProviderDefs()
+	toolDefs := ts.agent.Tools.ToProviderDefs()
+	if !pure.Enabled {
+		return toolDefs
+	}
+
+	filtered := make([]providers.ToolDefinition, 0, len(toolDefs))
+	for _, toolDef := range toolDefs {
+		if _, ok := pureDefaultToolAllowlist[toolDef.Function.Name]; ok {
+			filtered = append(filtered, toolDef)
+		}
+	}
+	return filtered
 }
 
 func sideQuestionResponseContent(response *providers.LLMResponse) string {

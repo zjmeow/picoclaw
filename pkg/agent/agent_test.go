@@ -1050,16 +1050,19 @@ func TestProcessMessage_PureWithoutSkillUsesOnlyDynamicPrompt(t *testing.T) {
 	}
 }
 
-func TestProcessMessage_ToolsAddDefaultEnablesToolsForPureSession(t *testing.T) {
-	al, _, _, _, cleanup := newTestAgentLoop(t)
-	defer cleanup()
+func TestProcessMessage_ToolsAddDefaultAllowsOnlyPureDefaultToolSubset(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Agents.Defaults.Workspace = t.TempDir()
+	cfg.Agents.Defaults.ModelName = "test-model"
+	cfg.Agents.Defaults.MaxTokens = 4096
+	cfg.Agents.Defaults.MaxToolIterations = 10
 
 	provider := &recordingProvider{}
+	al := NewAgentLoop(cfg, bus.NewMessageBus(), provider)
 	defaultAgent := al.GetRegistry().GetDefaultAgent()
 	if defaultAgent == nil {
 		t.Fatal("expected default agent")
 	}
-	defaultAgent.Provider = provider
 	defaultAgent.Tools.Register(&mockCustomTool{})
 
 	if _, err := al.processMessage(context.Background(), testInboundMessage(bus.InboundMessage{
@@ -1095,15 +1098,28 @@ func TestProcessMessage_ToolsAddDefaultEnablesToolsForPureSession(t *testing.T) 
 	if len(provider.lastTools) == 0 {
 		t.Fatal("expected default tools to be passed to provider in pure session")
 	}
-	found := false
-	for _, tool := range provider.lastTools {
-		if tool.Function.Name == "mock_custom" {
-			found = true
-			break
-		}
+
+	allowed := map[string]bool{
+		"read_file":   true,
+		"write_file":  true,
+		"append_file": true,
+		"edit_file":   true,
+		"list_dir":    true,
+		"message":     true,
+		"cron":        true,
 	}
-	if !found {
-		t.Fatalf("provider tools = %+v, want mock_custom", provider.lastTools)
+	seen := map[string]bool{}
+	for _, tool := range provider.lastTools {
+		name := tool.Function.Name
+		if !allowed[name] {
+			t.Fatalf("pure default tools included %q, want only %v", name, allowed)
+		}
+		seen[name] = true
+	}
+	for _, required := range []string{"read_file", "write_file", "append_file", "edit_file", "list_dir", "message"} {
+		if !seen[required] {
+			t.Fatalf("pure default tools missing %q; got %+v", required, provider.lastTools)
+		}
 	}
 }
 
