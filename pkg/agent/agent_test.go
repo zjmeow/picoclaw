@@ -83,6 +83,7 @@ func newStartedTestChannelManager(
 
 type recordingProvider struct {
 	lastMessages []providers.Message
+	lastTools    []providers.ToolDefinition
 	lastModel    string
 }
 
@@ -94,6 +95,7 @@ func (r *recordingProvider) Chat(
 	opts map[string]any,
 ) (*providers.LLMResponse, error) {
 	r.lastMessages = append([]providers.Message(nil), messages...)
+	r.lastTools = append([]providers.ToolDefinition(nil), tools...)
 	r.lastModel = model
 	return &providers.LLMResponse{
 		Content:   "Mock response",
@@ -913,6 +915,195 @@ func TestProcessMessage_SessionSkillCommandPersistsAcrossTurns(t *testing.T) {
 	}
 	if !strings.Contains(provider.lastMessages[0].Content, "### Skill: finance-news") {
 		t.Fatalf("second system prompt missing session skill:\n%s", provider.lastMessages[0].Content)
+	}
+}
+
+func TestProcessMessage_PureSessionSuppressesStaticPromptAndToolsButLoadsSkill(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.Config{
+		Agents: config.AgentsConfig{
+			Defaults: config.AgentDefaults{
+				Workspace:         tmpDir,
+				ModelName:         "test-model",
+				MaxTokens:         4096,
+				MaxToolIterations: 10,
+			},
+		},
+		Tools: config.ToolsConfig{
+			ReadFile: config.ReadFileToolConfig{Enabled: true},
+		},
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "USER.md"), []byte("DO NOT LEAK STATIC USER"), 0o644); err != nil {
+		t.Fatalf("WriteFile(USER.md) error = %v", err)
+	}
+	skillDir := filepath.Join(tmpDir, "skills", "concise")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(skill) error = %v", err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(skillDir, "SKILL.md"),
+		[]byte("---\nname: concise\ndescription: concise answers\n---\n\n# Concise\n\nAnswer with short sentences.\n"),
+		0o644,
+	); err != nil {
+		t.Fatalf("WriteFile(SKILL.md) error = %v", err)
+	}
+
+	msgBus := bus.NewMessageBus()
+	provider := &recordingProvider{}
+	al := NewAgentLoop(cfg, msgBus, provider)
+
+	response, err := al.processMessage(context.Background(), testInboundMessage(bus.InboundMessage{
+		Channel:  "telegram",
+		SenderID: "telegram:123",
+		ChatID:   "chat-1",
+		Content:  "/pure concise",
+	}))
+	if err != nil {
+		t.Fatalf("processMessage(/pure) error = %v", err)
+	}
+	if !strings.Contains(response, `Pure session enabled with skill "concise"`) {
+		t.Fatalf("/pure response = %q, want pure skill confirmation", response)
+	}
+
+	response, err = al.processMessage(context.Background(), testInboundMessage(bus.InboundMessage{
+		Channel:  "telegram",
+		SenderID: "telegram:123",
+		ChatID:   "chat-1",
+		Content:  "hello",
+	}))
+	if err != nil {
+		t.Fatalf("processMessage(hello) error = %v", err)
+	}
+	if response != "Mock response" {
+		t.Fatalf("response = %q, want Mock response", response)
+	}
+	if len(provider.lastMessages) == 0 {
+		t.Fatal("provider did not receive messages")
+	}
+	systemPrompt := provider.lastMessages[0].Content
+	if !strings.HasPrefix(systemPrompt, "## Current Time\n") {
+		t.Fatalf("pure system prompt should start with dynamic context:\n%s", systemPrompt)
+	}
+	if !strings.Contains(systemPrompt, "Answer with short sentences.") {
+		t.Fatalf("pure system prompt missing skill text:\n%s", systemPrompt)
+	}
+	if strings.Contains(systemPrompt, "DO NOT LEAK STATIC USER") {
+		t.Fatalf("pure system prompt leaked static USER.md:\n%s", systemPrompt)
+	}
+	if strings.Contains(systemPrompt, "# Active Skills") {
+		t.Fatalf("pure system prompt should not use active skills wrapper:\n%s", systemPrompt)
+	}
+	if len(provider.lastTools) != 0 {
+		t.Fatalf("pure session tools len = %d, want 0", len(provider.lastTools))
+	}
+}
+
+func TestProcessMessage_PureWithoutSkillUsesOnlyDynamicPrompt(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := &config.Config{
+		Agents: config.AgentsConfig{
+			Defaults: config.AgentDefaults{
+				Workspace:         tmpDir,
+				ModelName:         "test-model",
+				MaxTokens:         4096,
+				MaxToolIterations: 10,
+			},
+		},
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "USER.md"), []byte("DO NOT LEAK STATIC USER"), 0o644); err != nil {
+		t.Fatalf("WriteFile(USER.md) error = %v", err)
+	}
+
+	msgBus := bus.NewMessageBus()
+	provider := &recordingProvider{}
+	al := NewAgentLoop(cfg, msgBus, provider)
+
+	if _, err := al.processMessage(context.Background(), testInboundMessage(bus.InboundMessage{
+		Channel:  "telegram",
+		SenderID: "telegram:123",
+		ChatID:   "chat-1",
+		Content:  "/pure",
+	})); err != nil {
+		t.Fatalf("processMessage(/pure) error = %v", err)
+	}
+
+	if _, err := al.processMessage(context.Background(), testInboundMessage(bus.InboundMessage{
+		Channel:  "telegram",
+		SenderID: "telegram:123",
+		ChatID:   "chat-1",
+		Content:  "hello",
+	})); err != nil {
+		t.Fatalf("processMessage(hello) error = %v", err)
+	}
+	if len(provider.lastMessages) == 0 {
+		t.Fatal("provider did not receive messages")
+	}
+	systemPrompt := provider.lastMessages[0].Content
+	if !strings.HasPrefix(systemPrompt, "## Current Time\n") {
+		t.Fatalf("pure system prompt should start with dynamic context:\n%s", systemPrompt)
+	}
+	if strings.Contains(systemPrompt, "\n\n---\n\n") {
+		t.Fatalf("pure system prompt without skill should not include extra sections:\n%s", systemPrompt)
+	}
+	if strings.Contains(systemPrompt, "DO NOT LEAK STATIC USER") {
+		t.Fatalf("pure system prompt leaked static USER.md:\n%s", systemPrompt)
+	}
+}
+
+func TestProcessMessage_ToolsAddDefaultEnablesToolsForPureSession(t *testing.T) {
+	al, _, _, _, cleanup := newTestAgentLoop(t)
+	defer cleanup()
+
+	provider := &recordingProvider{}
+	defaultAgent := al.GetRegistry().GetDefaultAgent()
+	if defaultAgent == nil {
+		t.Fatal("expected default agent")
+	}
+	defaultAgent.Provider = provider
+	defaultAgent.Tools.Register(&mockCustomTool{})
+
+	if _, err := al.processMessage(context.Background(), testInboundMessage(bus.InboundMessage{
+		Channel:  "telegram",
+		SenderID: "telegram:123",
+		ChatID:   "chat-1",
+		Content:  "/pure",
+	})); err != nil {
+		t.Fatalf("processMessage(/pure) error = %v", err)
+	}
+
+	response, err := al.processMessage(context.Background(), testInboundMessage(bus.InboundMessage{
+		Channel:  "telegram",
+		SenderID: "telegram:123",
+		ChatID:   "chat-1",
+		Content:  "/tools add default",
+	}))
+	if err != nil {
+		t.Fatalf("processMessage(/tools add default) error = %v", err)
+	}
+	if !strings.Contains(response, "Default tools are now enabled for this pure session") {
+		t.Fatalf("/tools add default response = %q, want success text", response)
+	}
+
+	if _, err := al.processMessage(context.Background(), testInboundMessage(bus.InboundMessage{
+		Channel:  "telegram",
+		SenderID: "telegram:123",
+		ChatID:   "chat-1",
+		Content:  "hello with tools",
+	})); err != nil {
+		t.Fatalf("processMessage(hello with tools) error = %v", err)
+	}
+	if len(provider.lastTools) == 0 {
+		t.Fatal("expected default tools to be passed to provider in pure session")
+	}
+	found := false
+	for _, tool := range provider.lastTools {
+		if tool.Function.Name == "mock_custom" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("provider tools = %+v, want mock_custom", provider.lastTools)
 	}
 }
 

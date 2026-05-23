@@ -42,3 +42,16 @@ type SkillAwareSessionStore interface {
 	// SetSessionSkills replaces the session-pinned skills.
 	SetSessionSkills(sessionKey string, skills []string)
 }
+
+// PureSessionConfig stores the per-session pure chat mode settings.
+type PureSessionConfig struct {
+	Enabled      bool   `json:"enabled"`
+	Skill        string `json:"skill,omitempty"`
+	DefaultTools bool   `json:"default_tools,omitempty"`
+}
+
+// PureAwareSessionStore exposes session-scoped pure chat mode configuration.
+type PureAwareSessionStore interface {
+	GetSessionPureConfig(sessionKey string) PureSessionConfig
+	SetSessionPureConfig(sessionKey string, cfg PureSessionConfig)
+}

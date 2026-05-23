@@ -616,6 +616,13 @@ func (cb *ContextBuilder) BuildMessages(
 func (cb *ContextBuilder) BuildMessagesFromPrompt(req PromptBuildRequest) []providers.Message {
 	messages := []providers.Message{}
 
+	// Build short dynamic context (current time) — changes per request
+	dynamicCtx := cb.buildDynamicContext(req.Channel, req.ChatID, req.SenderID, req.SenderDisplayName)
+
+	if req.PureMode {
+		return cb.buildPureMessages(req, dynamicCtx)
+	}
+
 	// The static part (identity, bootstrap, memory) is cached locally to
 	// avoid repeated file I/O and string building on every call (fixes issue #607).
 	// Dynamic parts (time, session, summary) are built per request.
@@ -626,9 +633,6 @@ func (cb *ContextBuilder) BuildMessagesFromPrompt(req PromptBuildRequest) []prov
 	// - Codex maps only the first system message to its instructions field.
 	// - OpenAI-compat passes messages through as-is.
 	staticPrompt := cb.BuildSystemPromptWithCache()
-
-	// Build short dynamic context (current time) — changes per request
-	dynamicCtx := cb.buildDynamicContext(req.Channel, req.ChatID, req.SenderID, req.SenderDisplayName)
 
 	// Compose a single system message: dynamic + static (cached) + optional summary.
 	// Current time stays first so the model sees it before durable instructions.
@@ -756,6 +760,47 @@ func (cb *ContextBuilder) BuildMessagesFromPrompt(req PromptBuildRequest) []prov
 		messages = append(messages, userPromptMessage(req.CurrentMessage, req.Media))
 	}
 
+	return messages
+}
+
+func (cb *ContextBuilder) buildPureMessages(req PromptBuildRequest, dynamicCtx string) []providers.Message {
+	stringParts := []string{dynamicCtx}
+	contentBlocks := []providers.ContentBlock{
+		promptContentBlock(PromptPart{
+			ID:      "context.runtime",
+			Layer:   PromptLayerContext,
+			Slot:    PromptSlotRuntime,
+			Source:  PromptSource{ID: PromptSourceRuntime, Name: "runtime"},
+			Title:   "runtime context",
+			Content: dynamicCtx,
+			Stable:  false,
+			Cache:   PromptCacheNone,
+		}, nil),
+	}
+
+	if skillText := cb.buildPureSkillContext(req.PureSkill); strings.TrimSpace(skillText) != "" {
+		stringParts = append(stringParts, skillText)
+		contentBlocks = append(contentBlocks, promptContentBlock(PromptPart{
+			ID:      "capability.pure_skill",
+			Layer:   PromptLayerCapability,
+			Slot:    PromptSlotActiveSkill,
+			Source:  PromptSource{ID: PromptSourceActiveSkills, Name: "skill:pure"},
+			Title:   "pure skill",
+			Content: skillText,
+			Stable:  false,
+			Cache:   PromptCacheNone,
+		}, nil))
+	}
+
+	messages := []providers.Message{{
+		Role:        "system",
+		Content:     strings.Join(stringParts, "\n\n---\n\n"),
+		SystemParts: contentBlocks,
+	}}
+	messages = append(messages, sanitizeHistoryForProvider(req.History)...)
+	if strings.TrimSpace(req.CurrentMessage) != "" || len(req.Media) > 0 {
+		messages = append(messages, userPromptMessage(req.CurrentMessage, req.Media))
+	}
 	return messages
 }
 
@@ -977,6 +1022,17 @@ func (cb *ContextBuilder) buildActiveSkillsContext(skillNames []string) string {
 The following skills are active for this request. Follow them when relevant.
 
 %s`, content)
+}
+
+func (cb *ContextBuilder) buildPureSkillContext(skillName string) string {
+	if cb.skillsLoader == nil {
+		return ""
+	}
+	canonical, ok := cb.ResolveSkillName(skillName)
+	if !ok {
+		return ""
+	}
+	return cb.skillsLoader.LoadSkillsForContext([]string{canonical})
 }
 
 func (cb *ContextBuilder) buildActiveSkillsPromptParts(skillNames []string) []PromptPart {

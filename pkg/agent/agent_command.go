@@ -14,6 +14,7 @@ import (
 	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/providers"
+	"github.com/sipeed/picoclaw/pkg/session"
 )
 
 func (al *AgentLoop) handleCommand(
@@ -154,6 +155,27 @@ func (al *AgentLoop) buildCommandsRuntime(
 				return fmt.Errorf("session skill selection is unavailable")
 			}
 			return al.setSessionSkills(agent, opts.Dispatch.SessionKey, skills)
+		},
+		GetSessionPure: func() commands.PureSessionConfig {
+			if opts == nil {
+				return commands.PureSessionConfig{}
+			}
+			cfg := al.getSessionPureConfig(agent, opts.Dispatch.SessionKey)
+			return commands.PureSessionConfig{
+				Enabled:      cfg.Enabled,
+				Skill:        cfg.Skill,
+				DefaultTools: cfg.DefaultTools,
+			}
+		},
+		SetSessionPure: func(cfg commands.PureSessionConfig) error {
+			if opts == nil {
+				return fmt.Errorf("pure session configuration is unavailable")
+			}
+			return al.setSessionPureConfig(agent, opts.Dispatch.SessionKey, session.PureSessionConfig{
+				Enabled:      cfg.Enabled,
+				Skill:        cfg.Skill,
+				DefaultTools: cfg.DefaultTools,
+			})
 		},
 		ListMCPServers: func(ctx context.Context) []commands.MCPServerInfo {
 			if cfg == nil {

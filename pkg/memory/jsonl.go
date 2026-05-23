@@ -39,15 +39,23 @@ const (
 // Scope is stored as raw JSON so pkg/memory can stay decoupled from the
 // higher-level session package while still preserving structured scope data.
 type SessionMeta struct {
-	Key       string          `json:"key"`
-	Summary   string          `json:"summary"`
-	Skip      int             `json:"skip"`
-	Count     int             `json:"count"`
-	CreatedAt time.Time       `json:"created_at"`
-	UpdatedAt time.Time       `json:"updated_at"`
-	Scope     json.RawMessage `json:"scope,omitempty"`
-	Aliases   []string        `json:"aliases,omitempty"`
-	Skills    []string        `json:"skills,omitempty"`
+	Key       string             `json:"key"`
+	Summary   string             `json:"summary"`
+	Skip      int                `json:"skip"`
+	Count     int                `json:"count"`
+	CreatedAt time.Time          `json:"created_at"`
+	UpdatedAt time.Time          `json:"updated_at"`
+	Scope     json.RawMessage    `json:"scope,omitempty"`
+	Aliases   []string           `json:"aliases,omitempty"`
+	Skills    []string           `json:"skills,omitempty"`
+	Pure      *PureSessionConfig `json:"pure,omitempty"`
+}
+
+// PureSessionConfig stores pure chat mode settings in session metadata.
+type PureSessionConfig struct {
+	Enabled      bool   `json:"enabled"`
+	Skill        string `json:"skill,omitempty"`
+	DefaultTools bool   `json:"default_tools,omitempty"`
 }
 
 // JSONLStore implements Store using append-only JSONL files.
@@ -223,6 +231,10 @@ func (s *JSONLStore) GetSessionMeta(_ context.Context, sessionKey string) (Sessi
 	if len(meta.Skills) > 0 {
 		meta.Skills = append([]string(nil), meta.Skills...)
 	}
+	if meta.Pure != nil {
+		pure := *meta.Pure
+		meta.Pure = &pure
+	}
 	return meta, nil
 }
 
@@ -248,6 +260,44 @@ func (s *JSONLStore) SetSessionSkills(_ context.Context, sessionKey string, skil
 		return err
 	}
 	meta.Skills = normalizeSessionSkills(skills)
+	now := time.Now()
+	if meta.CreatedAt.IsZero() {
+		meta.CreatedAt = now
+	}
+	meta.UpdatedAt = now
+	return s.writeMeta(sessionKey, meta)
+}
+
+func (s *JSONLStore) GetSessionPureConfig(_ context.Context, sessionKey string) (PureSessionConfig, error) {
+	l := s.sessionLock(sessionKey)
+	l.Lock()
+	defer l.Unlock()
+
+	meta, err := s.readMeta(sessionKey)
+	if err != nil {
+		return PureSessionConfig{}, err
+	}
+	if meta.Pure == nil {
+		return PureSessionConfig{}, nil
+	}
+	return *meta.Pure, nil
+}
+
+func (s *JSONLStore) SetSessionPureConfig(_ context.Context, sessionKey string, cfg PureSessionConfig) error {
+	l := s.sessionLock(sessionKey)
+	l.Lock()
+	defer l.Unlock()
+
+	meta, err := s.readMeta(sessionKey)
+	if err != nil {
+		return err
+	}
+	cfg.Skill = strings.TrimSpace(cfg.Skill)
+	if !cfg.Enabled {
+		meta.Pure = nil
+	} else {
+		meta.Pure = &cfg
+	}
 	now := time.Now()
 	if meta.CreatedAt.IsZero() {
 		meta.CreatedAt = now

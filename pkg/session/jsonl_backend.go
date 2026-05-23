@@ -32,6 +32,11 @@ type skillAwareStore interface {
 	SetSessionSkills(ctx context.Context, sessionKey string, skills []string) error
 }
 
+type pureAwareStore interface {
+	GetSessionPureConfig(ctx context.Context, sessionKey string) (memory.PureSessionConfig, error)
+	SetSessionPureConfig(ctx context.Context, sessionKey string, cfg memory.PureSessionConfig) error
+}
+
 // MetadataAwareSessionStore exposes structured session metadata operations.
 type MetadataAwareSessionStore interface {
 	EnsureSessionMetadata(sessionKey string, scope *SessionScope, aliases []string)
@@ -218,5 +223,39 @@ func (b *JSONLBackend) SetSessionSkills(sessionKey string, skills []string) {
 	sessionKey = b.resolveSessionKey(sessionKey)
 	if err := skillStore.SetSessionSkills(context.Background(), sessionKey, skills); err != nil {
 		log.Printf("session: set session skills: %v", err)
+	}
+}
+
+func (b *JSONLBackend) GetSessionPureConfig(sessionKey string) PureSessionConfig {
+	pureStore, ok := b.store.(pureAwareStore)
+	if !ok {
+		return PureSessionConfig{}
+	}
+	sessionKey = b.resolveSessionKey(sessionKey)
+	cfg, err := pureStore.GetSessionPureConfig(context.Background(), sessionKey)
+	if err != nil {
+		log.Printf("session: get pure session config: %v", err)
+		return PureSessionConfig{}
+	}
+	return PureSessionConfig{
+		Enabled:      cfg.Enabled,
+		Skill:        cfg.Skill,
+		DefaultTools: cfg.DefaultTools,
+	}
+}
+
+func (b *JSONLBackend) SetSessionPureConfig(sessionKey string, cfg PureSessionConfig) {
+	pureStore, ok := b.store.(pureAwareStore)
+	if !ok {
+		return
+	}
+	sessionKey = b.resolveSessionKey(sessionKey)
+	memCfg := memory.PureSessionConfig{
+		Enabled:      cfg.Enabled,
+		Skill:        cfg.Skill,
+		DefaultTools: cfg.DefaultTools,
+	}
+	if err := pureStore.SetSessionPureConfig(context.Background(), sessionKey, memCfg); err != nil {
+		log.Printf("session: set pure session config: %v", err)
 	}
 }

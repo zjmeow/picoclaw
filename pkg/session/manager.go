@@ -17,6 +17,7 @@ type Session struct {
 	Messages []providers.Message `json:"messages"`
 	Summary  string              `json:"summary,omitempty"`
 	Skills   []string            `json:"skills,omitempty"`
+	Pure     *PureSessionConfig  `json:"pure,omitempty"`
 	Created  time.Time           `json:"created"`
 	Updated  time.Time           `json:"updated"`
 }
@@ -205,6 +206,40 @@ func (sm *SessionManager) SetSessionSkills(key string, skills []string) {
 	}
 	if len(session.Skills) == 0 {
 		session.Skills = nil
+	}
+	session.Updated = time.Now()
+}
+
+func (sm *SessionManager) GetSessionPureConfig(key string) PureSessionConfig {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+
+	session, ok := sm.sessions[key]
+	if !ok || session.Pure == nil {
+		return PureSessionConfig{}
+	}
+	return *session.Pure
+}
+
+func (sm *SessionManager) SetSessionPureConfig(key string, cfg PureSessionConfig) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	session, ok := sm.sessions[key]
+	if !ok {
+		session = &Session{
+			Key:      key,
+			Messages: []providers.Message{},
+			Created:  time.Now(),
+		}
+		sm.sessions[key] = session
+	}
+
+	cfg.Skill = strings.TrimSpace(cfg.Skill)
+	if !cfg.Enabled {
+		session.Pure = nil
+	} else {
+		session.Pure = &cfg
 	}
 	session.Updated = time.Now()
 }

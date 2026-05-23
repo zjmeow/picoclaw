@@ -36,6 +36,12 @@ type ContextStats struct {
 	MessageCount     int
 }
 
+type PureSessionConfig struct {
+	Enabled      bool
+	Skill        string
+	DefaultTools bool
+}
+
 // Runtime provides runtime dependencies to command handlers. It is constructed
 // per-request by the agent loop so that per-request state (like session scope)
 // can coexist with long-lived callbacks (like GetModelInfo).
@@ -49,6 +55,8 @@ type Runtime struct {
 	ResolveSkillName   func(name string) (string, bool)
 	ListSessionSkills  func() []string
 	SetSessionSkills   func(skills []string) error
+	GetSessionPure     func() PureSessionConfig
+	SetSessionPure     func(cfg PureSessionConfig) error
 	ListMCPServers     func(ctx context.Context) []MCPServerInfo
 	ListMCPTools       func(ctx context.Context, serverName string) ([]MCPToolInfo, error)
 	GetEnabledChannels func() []string

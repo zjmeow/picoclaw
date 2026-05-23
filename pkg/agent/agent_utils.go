@@ -480,6 +480,24 @@ func activeSkillNames(agent *AgentInstance, opts processOptions) []string {
 	return resolved
 }
 
+func pureConfigForTurn(ts *turnState) session.PureSessionConfig {
+	if ts == nil || ts.agent == nil {
+		return session.PureSessionConfig{}
+	}
+	return sessionPureConfig(ts.agent.Sessions, ts.sessionKey)
+}
+
+func providerToolDefsForTurn(ts *turnState) []providers.ToolDefinition {
+	if ts == nil || ts.agent == nil || ts.agent.Tools == nil {
+		return nil
+	}
+	pure := pureConfigForTurn(ts)
+	if pure.Enabled && !pure.DefaultTools {
+		return nil
+	}
+	return ts.agent.Tools.ToProviderDefs()
+}
+
 func sideQuestionResponseContent(response *providers.LLMResponse) string {
 	if response == nil {
 		return ""

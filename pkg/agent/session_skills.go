@@ -59,3 +59,53 @@ func (al *AgentLoop) setSessionSkills(agent *AgentInstance, sessionKey string, s
 	}
 	return nil
 }
+
+func sessionPureStore(store session.SessionStore) session.PureAwareSessionStore {
+	if store == nil {
+		return nil
+	}
+	pureStore, ok := store.(session.PureAwareSessionStore)
+	if !ok {
+		return nil
+	}
+	return pureStore
+}
+
+func sessionPureConfig(store session.SessionStore, sessionKey string) session.PureSessionConfig {
+	sessionKey = strings.TrimSpace(sessionKey)
+	if sessionKey == "" {
+		return session.PureSessionConfig{}
+	}
+	pureStore := sessionPureStore(store)
+	if pureStore == nil {
+		return session.PureSessionConfig{}
+	}
+	return pureStore.GetSessionPureConfig(sessionKey)
+}
+
+func (al *AgentLoop) getSessionPureConfig(agent *AgentInstance, sessionKey string) session.PureSessionConfig {
+	if agent == nil {
+		return session.PureSessionConfig{}
+	}
+	return sessionPureConfig(agent.Sessions, sessionKey)
+}
+
+func (al *AgentLoop) setSessionPureConfig(agent *AgentInstance, sessionKey string, cfg session.PureSessionConfig) error {
+	if agent == nil || agent.Sessions == nil {
+		return fmt.Errorf("pure session configuration is unavailable")
+	}
+	sessionKey = strings.TrimSpace(sessionKey)
+	if sessionKey == "" {
+		return fmt.Errorf("pure session configuration is unavailable")
+	}
+	pureStore := sessionPureStore(agent.Sessions)
+	if pureStore == nil {
+		return fmt.Errorf("pure session configuration is unavailable")
+	}
+	cfg.Skill = strings.TrimSpace(cfg.Skill)
+	pureStore.SetSessionPureConfig(sessionKey, cfg)
+	if err := agent.Sessions.Save(sessionKey); err != nil {
+		return err
+	}
+	return nil
+}

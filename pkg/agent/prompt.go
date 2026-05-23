@@ -112,6 +112,9 @@ type PromptBuildRequest struct {
 
 	ActiveSkills []string
 	Overlays     []PromptPart
+
+	PureMode  bool
+	PureSkill string
 }
 
 type PromptContributor interface {

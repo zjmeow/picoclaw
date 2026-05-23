@@ -12,6 +12,8 @@ func BuiltinDefinitions() []Definition {
 		listCommand(),
 		skillCommand(),
 		useCommand(),
+		pureCommand(),
+		toolsCommand(),
 		btwCommand(),
 		switchCommand(),
 		checkCommand(),

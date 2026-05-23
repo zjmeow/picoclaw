@@ -14,6 +14,11 @@ func promptBuildRequestForTurn(
 	currentMessage string,
 	media []string,
 ) PromptBuildRequest {
+	pure := sessionPureConfig(ts.agent.Sessions, ts.sessionKey)
+	activeSkills := activeSkillNames(ts.agent, ts.opts)
+	if pure.Enabled {
+		activeSkills = nil
+	}
 	return PromptBuildRequest{
 		History:           history,
 		Summary:           summary,
@@ -23,8 +28,10 @@ func promptBuildRequestForTurn(
 		ChatID:            ts.chatID,
 		SenderID:          ts.opts.Dispatch.SenderID(),
 		SenderDisplayName: ts.opts.SenderDisplayName,
-		ActiveSkills:      activeSkillNames(ts.agent, ts.opts),
+		ActiveSkills:      activeSkills,
 		Overlays:          promptOverlaysForOptions(ts.opts),
+		PureMode:          pure.Enabled,
+		PureSkill:         pure.Skill,
 	}
 }
 
