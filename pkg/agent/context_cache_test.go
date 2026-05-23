@@ -126,7 +126,7 @@ func TestSingleSystemMessage(t *testing.T) {
 	}
 }
 
-func TestBuildMessages_CurrentSenderDynamicContext(t *testing.T) {
+func TestBuildMessages_DynamicContextOnlyIncludesCurrentTime(t *testing.T) {
 	tmpDir := setupWorkspace(t, map[string]string{
 		"IDENTITY.md": "# Identity\nTest agent.",
 	})
@@ -134,57 +134,41 @@ func TestBuildMessages_CurrentSenderDynamicContext(t *testing.T) {
 
 	cb := NewContextBuilder(tmpDir)
 
-	tests := []struct {
-		name              string
-		senderID          string
-		senderDisplayName string
-		wantLine          string
-		wantSection       bool
-	}{
-		{
-			name:              "both id and display name",
-			senderID:          "feishu:ou_xxx",
-			senderDisplayName: "Zhang San",
-			wantLine:          "Current sender: Zhang San (ID: feishu:ou_xxx)",
-			wantSection:       true,
-		},
-		{
-			name:              "display name only",
-			senderDisplayName: "Alice",
-			wantLine:          "Current sender: Alice",
-			wantSection:       true,
-		},
-		{
-			name:        "id only",
-			senderID:    "discord:123",
-			wantLine:    "Current sender: discord:123",
-			wantSection: true,
-		},
-		{
-			name:        "no sender info",
-			wantSection: false,
-		},
+	msgs := cb.BuildMessages(nil, "", "hello", nil, "discord", "chat1", "discord:123", "Alice")
+	sys := msgs[0].Content
+
+	if !strings.HasPrefix(sys, "## Current Time\n") {
+		t.Fatalf("system prompt should start with Current Time:\n%s", sys)
+	}
+	if strings.Contains(sys, "## Current Sender") {
+		t.Fatalf("system prompt should omit Current Sender section:\n%s", sys)
+	}
+	if strings.Contains(sys, "## Current Session") {
+		t.Fatalf("system prompt should omit Current Session section:\n%s", sys)
+	}
+	if strings.Contains(sys, "## Runtime") {
+		t.Fatalf("system prompt should omit Runtime section:\n%s", sys)
+	}
+}
+
+func TestBuildMessages_PutsCurrentTimeFirst(t *testing.T) {
+	tmpDir := setupWorkspace(t, map[string]string{
+		"IDENTITY.md": "# Identity\nTest agent.",
+	})
+	defer os.RemoveAll(tmpDir)
+
+	cb := NewContextBuilder(tmpDir)
+	msgs := cb.BuildMessages(nil, "", "hello", nil, "discord", "chat1", "", "")
+	if len(msgs) == 0 || msgs[0].Role != "system" {
+		t.Fatalf("BuildMessages should start with a system message, got %#v", msgs)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			msgs := cb.BuildMessages(nil, "", "hello", nil, "discord", "chat1", tt.senderID, tt.senderDisplayName)
-			sys := msgs[0].Content
-
-			if tt.wantSection {
-				if !strings.Contains(sys, "## Current Sender") {
-					t.Fatalf("system prompt missing Current Sender section:\n%s", sys)
-				}
-				if !strings.Contains(sys, tt.wantLine) {
-					t.Fatalf("system prompt missing sender line %q:\n%s", tt.wantLine, sys)
-				}
-				return
-			}
-
-			if strings.Contains(sys, "## Current Sender") {
-				t.Fatalf("system prompt should omit Current Sender section:\n%s", sys)
-			}
-		})
+	sys := msgs[0].Content
+	if !strings.HasPrefix(sys, "## Current Time\n") {
+		t.Fatalf("system prompt should start with current time, got:\n%s", sys)
+	}
+	if strings.Index(sys, "## Current Time") > strings.Index(sys, "You are") {
+		t.Fatalf("current time should appear before static identity:\n%s", sys)
 	}
 }
 
@@ -330,6 +314,37 @@ func TestCacheStability(t *testing.T) {
 	}
 }
 
+func TestSkillCatalogIsNotInjectedIntoStaticPrompt(t *testing.T) {
+	tmpDir := setupWorkspace(t, map[string]string{
+		"skills/manual-only/SKILL.md": `---
+name: manual-only
+description: Should only appear after manual activation
+---
+# Manual Only
+Use this only when explicitly activated.`,
+	})
+	defer os.RemoveAll(tmpDir)
+
+	cb := NewContextBuilder(tmpDir)
+
+	staticPrompt := cb.BuildSystemPromptWithCache()
+	if strings.Contains(staticPrompt, "# Skills") ||
+		strings.Contains(staticPrompt, "Skills:") ||
+		strings.Contains(staticPrompt, "manual-only") ||
+		strings.Contains(staticPrompt, "Should only appear after manual activation") {
+		t.Fatalf("static prompt should not include installed skill catalog or metadata:\n%s", staticPrompt)
+	}
+
+	msgs := cb.BuildMessages(nil, "", "hello", nil, "test", "chat", "", "", "manual-only")
+	systemPrompt := msgs[0].Content
+	if !strings.Contains(systemPrompt, "# Active Skills") {
+		t.Fatalf("manual activation should inject active skills section:\n%s", systemPrompt)
+	}
+	if !strings.Contains(systemPrompt, "### Skill: manual-only") {
+		t.Fatalf("manual activation should inject requested skill content:\n%s", systemPrompt)
+	}
+}
+
 // TestNewFileCreationInvalidatesCache verifies that creating a source file that
 // did not exist when the cache was built triggers a cache rebuild.
 // This catches the "from nothing to something" edge case that the old
@@ -446,7 +461,7 @@ Updated content.`
 }
 
 // TestGlobalSkillFileContentChange verifies that modifying a global skill
-// (~/.picoclaw/skills) invalidates the cached system prompt.
+// (~/.picoclaw/skills) is reflected when the skill is manually activated.
 func TestGlobalSkillFileContentChange(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
@@ -469,8 +484,12 @@ description: global-v1
 
 	cb := NewContextBuilder(tmpDir)
 	sp1 := cb.BuildSystemPromptWithCache()
-	if !strings.Contains(sp1, "global-v1") {
-		t.Fatal("expected initial prompt to contain global skill description")
+	if strings.Contains(sp1, "global-v1") || strings.Contains(sp1, "global-skill") {
+		t.Fatal("static prompt should not contain global skill metadata")
+	}
+	msgs := cb.BuildMessages(nil, "", "hello", nil, "test", "chat", "", "", "global-skill")
+	if !strings.Contains(msgs[0].Content, "Global Skill v1") {
+		t.Fatal("manual activation should include initial global skill content")
 	}
 
 	v2 := `---
@@ -494,16 +513,17 @@ description: global-v2
 	}
 
 	sp2 := cb.BuildSystemPromptWithCache()
-	if !strings.Contains(sp2, "global-v2") {
-		t.Error("rebuilt prompt should contain updated global skill description")
+	if strings.Contains(sp2, "global-v2") || strings.Contains(sp2, "global-skill") {
+		t.Error("static prompt should not contain updated global skill metadata")
 	}
-	if sp1 == sp2 {
-		t.Error("cache should be invalidated when global skill file content changes")
+	msgs = cb.BuildMessages(nil, "", "hello", nil, "test", "chat", "", "", "global-skill")
+	if !strings.Contains(msgs[0].Content, "Global Skill v2") {
+		t.Error("manual activation should include updated global skill content")
 	}
 }
 
 // TestBuiltinSkillFileContentChange verifies that modifying a builtin skill
-// invalidates the cached system prompt.
+// is reflected when the skill is manually activated.
 func TestBuiltinSkillFileContentChange(t *testing.T) {
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
@@ -529,8 +549,12 @@ description: builtin-v1
 
 	cb := NewContextBuilder(tmpDir)
 	sp1 := cb.BuildSystemPromptWithCache()
-	if !strings.Contains(sp1, "builtin-v1") {
-		t.Fatal("expected initial prompt to contain builtin skill description")
+	if strings.Contains(sp1, "builtin-v1") || strings.Contains(sp1, "builtin-skill") {
+		t.Fatal("static prompt should not contain builtin skill metadata")
+	}
+	msgs := cb.BuildMessages(nil, "", "hello", nil, "test", "chat", "", "", "builtin-skill")
+	if !strings.Contains(msgs[0].Content, "Builtin Skill v1") {
+		t.Fatal("manual activation should include initial builtin skill content")
 	}
 
 	v2 := `---
@@ -554,16 +578,17 @@ description: builtin-v2
 	}
 
 	sp2 := cb.BuildSystemPromptWithCache()
-	if !strings.Contains(sp2, "builtin-v2") {
-		t.Error("rebuilt prompt should contain updated builtin skill description")
+	if strings.Contains(sp2, "builtin-v2") || strings.Contains(sp2, "builtin-skill") {
+		t.Error("static prompt should not contain updated builtin skill metadata")
 	}
-	if sp1 == sp2 {
-		t.Error("cache should be invalidated when builtin skill file content changes")
+	msgs = cb.BuildMessages(nil, "", "hello", nil, "test", "chat", "", "", "builtin-skill")
+	if !strings.Contains(msgs[0].Content, "Builtin Skill v2") {
+		t.Error("manual activation should include updated builtin skill content")
 	}
 }
 
 // TestSkillFileDeletionInvalidatesCache verifies that deleting a nested skill
-// file invalidates the cached system prompt.
+// file prevents manual skill activation from injecting it.
 func TestSkillFileDeletionInvalidatesCache(t *testing.T) {
 	tmpDir := setupWorkspace(t, map[string]string{
 		"skills/delete-me/SKILL.md": `---
@@ -576,8 +601,12 @@ description: delete-me-v1
 
 	cb := NewContextBuilder(tmpDir)
 	sp1 := cb.BuildSystemPromptWithCache()
-	if !strings.Contains(sp1, "delete-me-v1") {
-		t.Fatal("expected initial prompt to contain skill description")
+	if strings.Contains(sp1, "delete-me-v1") || strings.Contains(sp1, "delete-me") {
+		t.Fatal("static prompt should not contain skill metadata")
+	}
+	msgs := cb.BuildMessages(nil, "", "hello", nil, "test", "chat", "", "", "delete-me")
+	if !strings.Contains(msgs[0].Content, "Delete Me") {
+		t.Fatal("manual activation should include skill content before deletion")
 	}
 
 	skillPath := filepath.Join(tmpDir, "skills", "delete-me", "SKILL.md")
@@ -596,8 +625,9 @@ description: delete-me-v1
 	if strings.Contains(sp2, "delete-me-v1") {
 		t.Error("rebuilt prompt should not contain deleted skill description")
 	}
-	if sp1 == sp2 {
-		t.Error("cache should be invalidated when skill file is deleted")
+	msgs = cb.BuildMessages(nil, "", "hello", nil, "test", "chat", "", "", "delete-me")
+	if strings.Contains(msgs[0].Content, "### Skill: delete-me") || strings.Contains(msgs[0].Content, "Delete Me") {
+		t.Error("manual activation should not inject deleted skill content")
 	}
 }
 

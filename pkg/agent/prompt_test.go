@@ -124,10 +124,15 @@ func TestBuildMessagesFromPrompt_AttachesInternalPromptMetadata(t *testing.T) {
 	if len(system.SystemParts) < 3 {
 		t.Fatalf("system parts len = %d, want at least 3", len(system.SystemParts))
 	}
-	if system.SystemParts[0].PromptLayer != string(PromptLayerKernel) ||
-		system.SystemParts[0].PromptSlot != string(PromptSlotIdentity) ||
-		system.SystemParts[0].PromptSource != string(PromptSourceKernel) {
-		t.Fatalf("static system metadata = %#v, want kernel identity", system.SystemParts[0])
+	if system.SystemParts[0].PromptLayer != string(PromptLayerContext) ||
+		system.SystemParts[0].PromptSlot != string(PromptSlotRuntime) ||
+		system.SystemParts[0].PromptSource != string(PromptSourceRuntime) {
+		t.Fatalf("first system metadata = %#v, want runtime current time", system.SystemParts[0])
+	}
+	if system.SystemParts[1].PromptLayer != string(PromptLayerKernel) ||
+		system.SystemParts[1].PromptSlot != string(PromptSlotIdentity) ||
+		system.SystemParts[1].PromptSource != string(PromptSourceKernel) {
+		t.Fatalf("second system metadata = %#v, want kernel identity", system.SystemParts[1])
 	}
 
 	var hasRuntime, hasSummary bool

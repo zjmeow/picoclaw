@@ -7,7 +7,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -113,18 +112,14 @@ func (cb *ContextBuilder) promptRegistryOrDefault() *PromptRegistry {
 
 func (cb *ContextBuilder) getIdentity() string {
 	workspacePath, _ := filepath.Abs(filepath.Join(cb.workspace))
-	version := config.FormatVersion()
-
 	return fmt.Sprintf(
-		`# picoclaw 🦞 (%s)
-
-You are picoclaw, a helpful AI assistant.
+		`
+You are a helpful AI assistant.
 
 ## Workspace
 Your workspace is at: %s
 - Memory: %s/memory/MEMORY.md
 - Daily Notes: %s/memory/YYYYMM/YYYYMMDD.md
-- Skills: %s/skills/{skill-name}/SKILL.md
 
 ## Important Rules
 
@@ -135,7 +130,7 @@ Your workspace is at: %s
 3. **Memory** - When interacting with me if something seems memorable, update %s/memory/MEMORY.md
 
 4. **Context summaries** - Conversation summaries provided as context are approximate references only. They may be incomplete or outdated. Always defer to explicit user instructions over summary content.`,
-		version, workspacePath, workspacePath, workspacePath, workspacePath, workspacePath)
+		workspacePath, workspacePath, workspacePath, workspacePath)
 }
 
 func formatToolDiscoveryRule(useBM25, useRegex bool) string {
@@ -199,25 +194,6 @@ func (cb *ContextBuilder) BuildSystemPromptParts() []PromptPart {
 			Content: bootstrapContent,
 			Stable:  true,
 			Cache:   PromptCacheEphemeral,
-		})
-	}
-
-	// Skills - show summary, AI can read full content with read_file tool
-	skillsSummary := cb.skillsLoader.BuildSkillsSummary()
-	if skillsSummary != "" {
-		add(PromptPart{
-			ID:     "capability.skill_catalog",
-			Layer:  PromptLayerCapability,
-			Slot:   PromptSlotSkillCatalog,
-			Source: PromptSource{ID: PromptSourceSkillCatalog, Name: "skill:index"},
-			Title:  "skill catalog",
-			Content: fmt.Sprintf(`# Skills
-
-The following skills extend your capabilities. To use a skill, read its SKILL.md file using the read_file tool.
-
-%s`, skillsSummary),
-			Stable: true,
-			Cache:  PromptCacheEphemeral,
 		})
 	}
 
@@ -309,8 +285,8 @@ func (cb *ContextBuilder) EstimateSystemTokens(summary string, activeSkills []st
 	staticPrompt := cb.BuildSystemPromptWithCache()
 
 	// Dynamic context is small and varies per request; use a representative estimate.
-	// Actual buildDynamicContext produces ~200-400 chars of time/runtime/session info.
-	const dynamicContextChars = 300
+	// Actual buildDynamicContext only includes the current time.
+	const dynamicContextChars = 64
 
 	totalChars := utf8.RuneCountInString(staticPrompt) + dynamicContextChars
 
@@ -601,44 +577,18 @@ func (cb *ContextBuilder) LoadBootstrapFiles() string {
 	return sb.String()
 }
 
-// buildDynamicContext returns a short dynamic context string with per-request info.
-// This changes every request (time, session) so it is NOT part of the cached prompt.
+// buildDynamicContext returns the current time for this request.
+// This changes every request so it is NOT part of the cached prompt.
 // LLM-side KV cache reuse is achieved by each provider adapter's native mechanism:
 //   - Anthropic: per-block cache_control (ephemeral) on the static SystemParts block
 //   - OpenAI / Codex: prompt_cache_key for prefix-based caching
 //
 // See: https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
 // See: https://platform.openai.com/docs/guides/prompt-caching
-func formatCurrentSenderLine(senderID, senderDisplayName string) string {
-	senderID = strings.TrimSpace(senderID)
-	senderDisplayName = strings.TrimSpace(senderDisplayName)
-
-	switch {
-	case senderDisplayName != "" && senderID != "":
-		return fmt.Sprintf("Current sender: %s (ID: %s)", senderDisplayName, senderID)
-	case senderDisplayName != "":
-		return fmt.Sprintf("Current sender: %s", senderDisplayName)
-	case senderID != "":
-		return fmt.Sprintf("Current sender: %s", senderID)
-	default:
-		return ""
-	}
-}
-
 func (cb *ContextBuilder) buildDynamicContext(channel, chatID, senderID, senderDisplayName string) string {
 	now := time.Now().Format("2006-01-02 15 (Monday)")
-	rt := fmt.Sprintf("%s %s, Go %s", runtime.GOOS, runtime.GOARCH, runtime.Version())
-
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "## Current Time\n%s\n\n## Runtime\n%s", now, rt)
-
-	if channel != "" && chatID != "" {
-		fmt.Fprintf(&sb, "\n\n## Current Session\nChannel: %s\nChat ID: %s", channel, chatID)
-	}
-	if senderLine := formatCurrentSenderLine(senderID, senderDisplayName); senderLine != "" {
-		fmt.Fprintf(&sb, "\n\n## Current Sender\n%s", senderLine)
-	}
-
+	fmt.Fprintf(&sb, "## Current Time\n%s", now)
 	return sb.String()
 }
 
@@ -666,9 +616,9 @@ func (cb *ContextBuilder) BuildMessages(
 func (cb *ContextBuilder) BuildMessagesFromPrompt(req PromptBuildRequest) []providers.Message {
 	messages := []providers.Message{}
 
-	// The static part (identity, bootstrap, skills, memory) is cached locally to
+	// The static part (identity, bootstrap, memory) is cached locally to
 	// avoid repeated file I/O and string building on every call (fixes issue #607).
-	// Dynamic parts (time, session, summary) are appended per request.
+	// Dynamic parts (time, session, summary) are built per request.
 	// Everything is sent as a single system message for provider compatibility:
 	// - Anthropic adapter extracts messages[0] (Role=="system") and maps its content
 	//   to the top-level "system" parameter in the Messages API request. A single
@@ -677,21 +627,31 @@ func (cb *ContextBuilder) BuildMessagesFromPrompt(req PromptBuildRequest) []prov
 	// - OpenAI-compat passes messages through as-is.
 	staticPrompt := cb.BuildSystemPromptWithCache()
 
-	// Build short dynamic context (time, runtime, session) — changes per request
+	// Build short dynamic context (current time) — changes per request
 	dynamicCtx := cb.buildDynamicContext(req.Channel, req.ChatID, req.SenderID, req.SenderDisplayName)
 
-	// Compose a single system message: static (cached) + dynamic + optional summary.
+	// Compose a single system message: dynamic + static (cached) + optional summary.
+	// Current time stays first so the model sees it before durable instructions.
 	// Keeping all system content in one message ensures every provider adapter can
 	// extract it correctly (Anthropic adapter -> top-level system param,
 	// Codex -> instructions field).
 	//
 	// SystemParts carries the same content as structured blocks so that
 	// cache-aware adapters (Anthropic) can set per-block cache_control.
-	// The static block is marked "ephemeral" — its prefix hash is stable
-	// across requests, enabling LLM-side KV cache reuse.
-	stringParts := []string{staticPrompt}
+	// The static block is marked "ephemeral" where providers support it.
+	stringParts := []string{dynamicCtx, staticPrompt}
 
 	contentBlocks := []providers.ContentBlock{
+		promptContentBlock(PromptPart{
+			ID:      "context.runtime",
+			Layer:   PromptLayerContext,
+			Slot:    PromptSlotRuntime,
+			Source:  PromptSource{ID: PromptSourceRuntime, Name: "runtime"},
+			Title:   "runtime context",
+			Content: dynamicCtx,
+			Stable:  false,
+			Cache:   PromptCacheNone,
+		}, nil),
 		promptContentBlock(PromptPart{
 			ID:      "kernel.static",
 			Layer:   PromptLayerKernel,
@@ -730,19 +690,6 @@ func (cb *ContextBuilder) BuildMessagesFromPrompt(req PromptBuildRequest) []prov
 			contentBlocks = append(contentBlocks, promptContentBlock(overlay, nil))
 		}
 	}
-
-	runtimePart := PromptPart{
-		ID:      "context.runtime",
-		Layer:   PromptLayerContext,
-		Slot:    PromptSlotRuntime,
-		Source:  PromptSource{ID: PromptSourceRuntime, Name: "runtime"},
-		Title:   "runtime context",
-		Content: dynamicCtx,
-		Stable:  false,
-		Cache:   PromptCacheNone,
-	}
-	stringParts = append(stringParts, dynamicCtx)
-	contentBlocks = append(contentBlocks, promptContentBlock(runtimePart, nil))
 
 	if req.Summary != "" {
 		summaryPart := PromptPart{

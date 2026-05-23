@@ -24,21 +24,20 @@ const (
 type PromptSlot string
 
 const (
-	PromptSlotIdentity     PromptSlot = "identity"
-	PromptSlotHierarchy    PromptSlot = "hierarchy"
-	PromptSlotWorkspace    PromptSlot = "workspace"
-	PromptSlotTooling      PromptSlot = "tooling"
-	PromptSlotMCP          PromptSlot = "mcp"
-	PromptSlotSkillCatalog PromptSlot = "skill_catalog"
-	PromptSlotActiveSkill  PromptSlot = "active_skill"
-	PromptSlotMemory       PromptSlot = "memory"
-	PromptSlotRuntime      PromptSlot = "runtime"
-	PromptSlotSummary      PromptSlot = "summary"
-	PromptSlotMessage      PromptSlot = "message"
-	PromptSlotSteering     PromptSlot = "steering"
-	PromptSlotSubTurn      PromptSlot = "subturn"
-	PromptSlotInterrupt    PromptSlot = "interrupt"
-	PromptSlotOutput       PromptSlot = "output"
+	PromptSlotIdentity    PromptSlot = "identity"
+	PromptSlotHierarchy   PromptSlot = "hierarchy"
+	PromptSlotWorkspace   PromptSlot = "workspace"
+	PromptSlotTooling     PromptSlot = "tooling"
+	PromptSlotMCP         PromptSlot = "mcp"
+	PromptSlotActiveSkill PromptSlot = "active_skill"
+	PromptSlotMemory      PromptSlot = "memory"
+	PromptSlotRuntime     PromptSlot = "runtime"
+	PromptSlotSummary     PromptSlot = "summary"
+	PromptSlotMessage     PromptSlot = "message"
+	PromptSlotSteering    PromptSlot = "steering"
+	PromptSlotSubTurn     PromptSlot = "subturn"
+	PromptSlotInterrupt   PromptSlot = "interrupt"
+	PromptSlotOutput      PromptSlot = "output"
 )
 
 type PromptSourceID string
@@ -50,7 +49,6 @@ const (
 	PromptSourceRuntime        PromptSourceID = "runtime.context"
 	PromptSourceSummary        PromptSourceID = "context.summary"
 	PromptSourceMemory         PromptSourceID = "memory:workspace"
-	PromptSourceSkillCatalog   PromptSourceID = "skill:index"
 	PromptSourceActiveSkills   PromptSourceID = "skill:active"
 	PromptSourceToolRegistry   PromptSourceID = "tool_registry:native"
 	PromptSourceToolDiscovery  PromptSourceID = "tool_registry:discovery"
@@ -179,13 +177,6 @@ func builtinPromptSources() []PromptSourceDescriptor {
 			Owner:           "tools",
 			Description:     "Native provider tool definitions",
 			Allowed:         []PromptPlacement{{Layer: PromptLayerCapability, Slot: PromptSlotTooling}},
-			StableByDefault: true,
-		},
-		{
-			ID:              PromptSourceSkillCatalog,
-			Owner:           "skills",
-			Description:     "Installed skill catalog",
-			Allowed:         []PromptPlacement{{Layer: PromptLayerCapability, Slot: PromptSlotSkillCatalog}},
 			StableByDefault: true,
 		},
 		{
@@ -470,8 +461,6 @@ func slotPriority(slot PromptSlot) int {
 		return 800
 	case PromptSlotMCP:
 		return 790
-	case PromptSlotSkillCatalog:
-		return 780
 	case PromptSlotActiveSkill:
 		return 770
 	case PromptSlotMemory:

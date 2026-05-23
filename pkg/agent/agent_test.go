@@ -213,7 +213,7 @@ func TestNewAgentLoop_DoesNotRegisterWebSearchTool_WhenNoReadyProviders(t *testi
 	}
 }
 
-func TestProcessMessage_IncludesCurrentSenderInDynamicContext(t *testing.T) {
+func TestProcessMessage_PutsCurrentTimeFirstInSystemPrompt(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "agent-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -255,9 +255,11 @@ func TestProcessMessage_IncludesCurrentSenderInDynamicContext(t *testing.T) {
 	}
 
 	systemPrompt := provider.lastMessages[0].Content
-	wantSender := "## Current Sender\nCurrent sender: Alice (ID: discord:123)"
-	if !strings.Contains(systemPrompt, wantSender) {
-		t.Fatalf("system prompt missing sender context %q:\n%s", wantSender, systemPrompt)
+	if !strings.HasPrefix(systemPrompt, "## Current Time\n") {
+		t.Fatalf("system prompt should start with current time:\n%s", systemPrompt)
+	}
+	if strings.Contains(systemPrompt, "## Current Sender") {
+		t.Fatalf("system prompt should not include sender context:\n%s", systemPrompt)
 	}
 
 	lastMessage := provider.lastMessages[len(provider.lastMessages)-1]
@@ -437,11 +439,14 @@ func TestProcessMessage_BtwCommandIncludesRequestContextAndMedia(t *testing.T) {
 	}
 
 	systemPrompt := provider.lastMessages[0].Content
-	if !strings.Contains(systemPrompt, "## Current Session\nChannel: discord\nChat ID: group-1") {
-		t.Fatalf("system prompt missing current session context:\n%s", systemPrompt)
+	if !strings.HasPrefix(systemPrompt, "## Current Time\n") {
+		t.Fatalf("system prompt should start with current time:\n%s", systemPrompt)
 	}
-	if !strings.Contains(systemPrompt, "## Current Sender\nCurrent sender: Alice (ID: discord:123)") {
-		t.Fatalf("system prompt missing current sender context:\n%s", systemPrompt)
+	if strings.Contains(systemPrompt, "## Current Session") {
+		t.Fatalf("system prompt should not include current session context:\n%s", systemPrompt)
+	}
+	if strings.Contains(systemPrompt, "## Current Sender") {
+		t.Fatalf("system prompt should not include current sender context:\n%s", systemPrompt)
 	}
 
 	lastMessage := provider.lastMessages[len(provider.lastMessages)-1]
