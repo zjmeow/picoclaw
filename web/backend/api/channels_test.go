@@ -4,11 +4,50 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/sipeed/picoclaw/pkg/config"
 )
+
+func TestHandleListChannelCatalog_ReturnsOnlyRetainedChannels(t *testing.T) {
+	configPath, cleanup := setupOAuthTestEnv(t)
+	defer cleanup()
+
+	h := NewHandler(configPath)
+	mux := http.NewServeMux()
+	h.RegisterRoutes(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/channels/catalog", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf(
+			"GET /api/channels/catalog status = %d, want %d, body=%s",
+			rec.Code,
+			http.StatusOK,
+			rec.Body.String(),
+		)
+	}
+
+	var resp struct {
+		Channels []channelCatalogItem `json:"channels"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+
+	var names []string
+	for _, item := range resp.Channels {
+		names = append(names, item.Name)
+	}
+	want := []string{"feishu", "qq", "weixin"}
+	if !reflect.DeepEqual(names, want) {
+		t.Fatalf("catalog channels = %#v, want %#v", names, want)
+	}
+}
 
 func TestHandleGetChannelConfig_ReturnsSecretPresenceWithoutLeakingSecrets(t *testing.T) {
 	configPath, cleanup := setupOAuthTestEnv(t)
@@ -155,7 +194,7 @@ func TestHandleGetChannelConfig_ReturnsDefaultShapeForMissingChannel(t *testing.
 	if err != nil {
 		t.Fatalf("LoadConfig() error = %v", err)
 	}
-	delete(cfg.Channels, config.ChannelIRC)
+	delete(cfg.Channels, config.ChannelQQ)
 	if err := config.SaveConfig(configPath, cfg); err != nil {
 		t.Fatalf("SaveConfig() error = %v", err)
 	}
@@ -164,13 +203,13 @@ func TestHandleGetChannelConfig_ReturnsDefaultShapeForMissingChannel(t *testing.
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/channels/irc/config", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/channels/qq/config", nil)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf(
-			"GET /api/channels/irc/config status = %d, want %d, body=%s",
+			"GET /api/channels/qq/config status = %d, want %d, body=%s",
 			rec.Code,
 			http.StatusOK,
 			rec.Body.String(),
@@ -183,11 +222,8 @@ func TestHandleGetChannelConfig_ReturnsDefaultShapeForMissingChannel(t *testing.
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("json.Unmarshal() error = %v", err)
 	}
-	if got := resp.Config["server"]; got != "" {
-		t.Fatalf("config.server = %#v, want empty string", got)
-	}
-	if got := resp.Config["nick"]; got != "picoclaw" {
-		t.Fatalf("config.nick = %#v, want %q", got, "picoclaw")
+	if got := resp.Config["max_message_length"]; got != float64(2000) {
+		t.Fatalf("config.max_message_length = %#v, want 2000", got)
 	}
 	if got := resp.Config["enabled"]; got != false {
 		t.Fatalf("config.enabled = %#v, want false", got)

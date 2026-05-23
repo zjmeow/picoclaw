@@ -23,8 +23,6 @@ type Handler struct {
 	oauthState           map[string]string
 	weixinMu             sync.Mutex
 	weixinFlows          map[string]*weixinFlow
-	wecomMu              sync.Mutex
-	wecomFlows           map[string]*wecomFlow
 }
 
 // NewHandler creates an instance of the API handler.
@@ -35,7 +33,6 @@ func NewHandler(configPath string) *Handler {
 		oauthFlows:  make(map[string]*oauthFlow),
 		oauthState:  make(map[string]string),
 		weixinFlows: make(map[string]*weixinFlow),
-		wecomFlows:  make(map[string]*wecomFlow),
 	}
 }
 
@@ -104,9 +101,6 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 
 	// WeChat QR login flow
 	h.registerWeixinRoutes(mux)
-
-	// WeCom QR login flow
-	h.registerWecomRoutes(mux)
 }
 
 // Shutdown gracefully shuts down the handler, stopping the gateway if it was started by this handler.

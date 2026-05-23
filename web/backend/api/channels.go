@@ -14,22 +14,9 @@ type channelCatalogItem struct {
 }
 
 var channelCatalog = []channelCatalogItem{
-	{Name: "weixin", ConfigKey: "weixin"},
-	{Name: "telegram", ConfigKey: "telegram"},
-	{Name: "discord", ConfigKey: "discord"},
-	{Name: "slack", ConfigKey: "slack"},
 	{Name: "feishu", ConfigKey: "feishu"},
-	{Name: "dingtalk", ConfigKey: "dingtalk"},
-	{Name: "line", ConfigKey: "line"},
 	{Name: "qq", ConfigKey: "qq"},
-	{Name: "onebot", ConfigKey: "onebot"},
-	{Name: "wecom", ConfigKey: "wecom"},
-	{Name: "whatsapp", ConfigKey: "whatsapp", Variant: "bridge"},
-	{Name: "whatsapp_native", ConfigKey: "whatsapp", Variant: "native"},
-	{Name: "pico", ConfigKey: "pico"},
-	{Name: "maixcam", ConfigKey: "maixcam"},
-	{Name: "matrix", ConfigKey: "matrix"},
-	{Name: "irc", ConfigKey: "irc"},
+	{Name: "weixin", ConfigKey: "weixin"},
 }
 
 type channelConfigResponse struct {
@@ -90,22 +77,9 @@ func findChannelCatalogItem(name string) (channelCatalogItem, bool) {
 }
 
 var channelSecretFieldMap = map[string][]string{
-	"weixin":          {"token"},
-	"telegram":        {"token"},
-	"discord":         {"token"},
-	"slack":           {"bot_token", "app_token"},
-	"feishu":          {"app_secret", "encrypt_key", "verification_token"},
-	"dingtalk":        {"client_secret"},
-	"line":            {"channel_secret", "channel_access_token"},
-	"qq":              {"app_secret"},
-	"onebot":          {"access_token"},
-	"wecom":           {"secret"},
-	"pico":            {"token"},
-	"matrix":          {"access_token"},
-	"irc":             {"password", "nickserv_password", "sasl_password"},
-	"whatsapp":        {},
-	"whatsapp_native": {},
-	"maixcam":         {},
+	"feishu": {"app_secret", "encrypt_key", "verification_token"},
+	"qq":     {"app_secret"},
+	"weixin": {"token"},
 }
 
 func buildChannelConfigResponse(cfg *config.Config, item channelCatalogItem) channelConfigResponse {

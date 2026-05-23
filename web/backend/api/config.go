@@ -290,58 +290,6 @@ func validateConfig(cfg *config.Config) []string {
 		errs = append(errs, fmt.Sprintf("gateway.port %d is out of valid range (1-65535)", cfg.Gateway.Port))
 	}
 
-	// Pico channel: token required when enabled
-	{
-		bc := cfg.Channels.GetByType(config.ChannelPico)
-		if bc != nil && bc.Enabled {
-			if decoded, err := bc.GetDecoded(); err == nil && decoded != nil {
-				if c, ok := decoded.(*config.PicoSettings); ok && c.Token.String() == "" {
-					errs = append(errs, "channels.pico.token is required when pico channel is enabled")
-				}
-			}
-		}
-	}
-
-	// Telegram: token required when enabled
-	{
-		bc := cfg.Channels.GetByType(config.ChannelTelegram)
-		if bc != nil && bc.Enabled {
-			if decoded, err := bc.GetDecoded(); err == nil && decoded != nil {
-				if c, ok := decoded.(*config.TelegramSettings); ok && c.Token.String() == "" {
-					errs = append(errs, "channels.telegram.token is required when telegram channel is enabled")
-				}
-			}
-		}
-	}
-
-	// Discord: token required when enabled
-	{
-		bc := cfg.Channels.GetByType(config.ChannelDiscord)
-		if bc != nil && bc.Enabled {
-			if decoded, err := bc.GetDecoded(); err == nil && decoded != nil {
-				if c, ok := decoded.(*config.DiscordSettings); ok && c.Token.String() == "" {
-					errs = append(errs, "channels.discord.token is required when discord channel is enabled")
-				}
-			}
-		}
-	}
-
-	{
-		bc := cfg.Channels.GetByType(config.ChannelWeCom)
-		if bc != nil && bc.Enabled {
-			if decoded, err := bc.GetDecoded(); err == nil && decoded != nil {
-				if c, ok := decoded.(*config.WeComSettings); ok {
-					if c.BotID == "" {
-						errs = append(errs, "channels.wecom.bot_id is required when wecom channel is enabled")
-					}
-					if c.Secret.String() == "" {
-						errs = append(errs, "channels.wecom.secret is required when wecom channel is enabled")
-					}
-				}
-			}
-		}
-	}
-
 	if cfg.Tools.Exec.Enabled {
 		if cfg.Tools.Exec.EnableDenyPatterns {
 			errs = append(
